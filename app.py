@@ -41,7 +41,8 @@ if "chat_history" not in st.session_state:
     ]
 
 # --- 5. UI Display ---
-for message in st.session_state.chat_history:
+# Use enumerate to get the index of each message
+for msg_index, message in enumerate(st.session_state.chat_history):
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         if "results" in message:
@@ -50,20 +51,24 @@ for message in st.session_state.chat_history:
                 if isinstance(results, dict):
                     results = [results]
                 
-                cols = st.columns(len(results))
+                num_columns = min(len(results), 5)
+                cols = st.columns(num_columns)
                 for i, movie in enumerate(results):
-                    with cols[i]:
+                    with cols[i % num_columns]:
                         if movie and movie.get("poster_path"): # type: ignore
-                            st.image(f"https://image.tmdb.org/t/p/w200{movie.get('poster_path')}", caption=movie.get('title')) # type: ignore
+                            st.image(f"https://image.tmdb.org/t/p/w200{movie.get('poster_path')}") # type: ignore
                         if movie:
                             st.markdown(f"**{movie.get('title', 'N/A')}**") # type: ignore
-                            if st.button("Show Details", key=f"details_{movie.get('id')}_{i}"): # type: ignore
+                            # --- THE KEY FIX ---
+                            # Add the message index to the key to guarantee uniqueness
+                            unique_key = f"details_{msg_index}_{movie.get('id')}_{i}" # type: ignore
+                            if st.button("Show Details", key=unique_key):
                                     st.session_state.selected_movie = movie # type: ignore
                                     st.rerun()
 
 if 'selected_movie' in st.session_state and st.session_state.selected_movie:
     movie = st.session_state.selected_movie
-    with st.container():
+    with st.container(border=True):
         st.subheader(f"Details for: {movie.get('title')}") # type: ignore
         col1, col2 = st.columns([1, 2])
         with col1:
@@ -73,7 +78,7 @@ if 'selected_movie' in st.session_state and st.session_state.selected_movie:
             st.write(f"**Synopsis:** {movie.get('overview', 'No synopsis available.')}") # type: ignore
             st.write(f"**Cast:** {', '.join(movie.get('cast', ['N/A']))}") # type: ignore
             st.write(f"**Director:** {movie.get('director', 'N/A')}") # type: ignore
-            if st.button("Back to Recommendations"):
+            if st.button("Back to Chat"):
                 del st.session_state.selected_movie
                 st.rerun()
 
@@ -83,10 +88,10 @@ if prompt := st.chat_input("Ask me for a movie, genre, or something similar...")
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    response = chat.send_message(prompt, tools=tools)
-
     try:
+        response = chat.send_message(prompt, tools=tools)
         response_part = response.candidates[0].content.parts[0]
+
         if hasattr(response_part, 'function_call') and response_part.function_call:
             with st.spinner("Calling my movie database tool... 🎬"):
                 function_call = response_part.function_call
@@ -95,28 +100,18 @@ if prompt := st.chat_input("Ask me for a movie, genre, or something similar...")
                 if tool_function:
                     tool_response = tool_function(**dict(function_call.args))
                     
+                    response_text = ""
                     if tool_response:
-                        response_for_ai = tool_response
-                        if isinstance(tool_response, dict):
-                            response_for_ai = [tool_response]
-                        
-                        movie_titles = [m.get('title', 'Unknown Title') for m in response_for_ai] # type: ignore
-                        tool_response_json = json.dumps(movie_titles)
+                        if isinstance(tool_response, list):
+                            response_text = "Of course! Here are some recommendations I found for you:"
+                        else:
+                            response_text = f"You got it. Here is the result for '{tool_response.get('title')}':"
                     else:
-                        tool_response_json = json.dumps("I couldn't find any movies matching that.")
-
-                    final_response = chat.send_message(
-                        glm.Part(function_response=glm.FunctionResponse(
-                            name=function_call.name,
-                            response={"content": tool_response_json}
-                        ))
-                    )
+                        response_text = "Sorry, I couldn't find anything matching your request."
                     
-                    response_text = final_response.text
                     assistant_message = {"role": "assistant", "content": response_text}
-                    
                     if tool_response:
-                         assistant_message["results"] = tool_response #type: ignore
+                        assistant_message["results"] = tool_response # type: ignore
                     
                     st.session_state.chat_history.append(assistant_message)
                 else:
@@ -124,12 +119,8 @@ if prompt := st.chat_input("Ask me for a movie, genre, or something similar...")
         else:
             st.session_state.chat_history.append({"role": "assistant", "content": response.text})
 
-    except (IndexError, AttributeError, genai.types.StopCandidateException): # type: ignore
-        try:
-            error_text = response.text
-            st.session_state.chat_history.append({"role": "assistant", "content": error_text})
-        except (ValueError, AttributeError):
-            st.session_state.chat_history.append({"role": "assistant", "content": "I'm sorry, my response was blocked. Please try asking in a different way."})
+    except (IndexError, AttributeError, genai.types.StopCandidateException) as e: # type: ignore
+        st.error("An API or safety error occurred. Please try again.")
 
     st.rerun()
 
