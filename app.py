@@ -15,6 +15,7 @@ except Exception as e:
 tools = [
     helpers.search_movie,
     helpers.get_recommendations_by_genre,
+    helpers.get_similar_movies,
 ]
 
 # --- 3. Model and Chat Initialization ---
@@ -103,7 +104,13 @@ if prompt := st.chat_input("Ask me for a movie, genre, or something similar...")
                     response_text = ""
                     if tool_response:
                         if isinstance(tool_response, list):
-                            response_text = "Of course! Here are some recommendations I found for you:"
+                            # Customize message slightly based on which tool responded
+                            if function_call.name == 'get_recommendations_by_genre':
+                                response_text = "Of course! Here are some recommendations by genre:" 
+                            elif function_call.name == 'get_similar_movies':
+                                response_text = "Got it! Here are movies similar to your request:"
+                            else:
+                                response_text = "Of course! Here are some recommendations I found for you:"
                         else:
                             response_text = f"You got it. Here is the result for '{tool_response.get('title')}':"
                     else:

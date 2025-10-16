@@ -133,3 +133,49 @@ def get_recommendations_by_genre(genres: list[str]):
         return f"The genre recommendation API request failed: {e}"
     except Exception as e:
         return f"An unexpected error occurred while getting recommendations: {e}"
+
+
+def get_similar_movies(title: str):
+    """
+    Finds up to 5 movies similar to the given movie title.
+
+    This function first searches TMDb for the best-matching movie ID for the provided
+    title, then queries the "similar" endpoint, and finally enriches each result with
+    full details using get_movie_details.
+    """
+    if not API_KEY:
+        st.error("TMDb API key is not configured.", icon="🚨")
+        return "API key is missing. Cannot get similar movies."
+
+    # 1) Search for the best match to obtain a movie ID
+    search_url = f"https://api.themoviedb.org/3/search/movie?api_key={API_KEY}&query={title}"
+    try:
+        search_resp = requests.get(search_url)
+        search_resp.raise_for_status()
+        search_results = search_resp.json().get('results', [])
+
+        if not search_results:
+            return f"I couldn't find any movie matching '{title}'. Please check the spelling or try another title."
+
+        # Pick best match by popularity among top 5
+        top_results = sorted(search_results[:5], key=lambda x: x.get('popularity', 0), reverse=True)
+        best_match_id = top_results[0]['id']
+
+        # 2) Query the similar movies endpoint
+        similar_url = f"https://api.themoviedb.org/3/movie/{best_match_id}/similar?api_key={API_KEY}"
+        similar_resp = requests.get(similar_url)
+        similar_resp.raise_for_status()
+        similar_results = similar_resp.json().get('results', [])
+
+        if not similar_results:
+            return f"I couldn't find similar movies for '{title}'."
+
+        # 3) Enrich top 5 with detailed info
+        top_5_ids = [movie['id'] for movie in similar_results[:5]]
+        detailed = [get_movie_details(mid) for mid in top_5_ids]
+        return [m for m in detailed if m]
+
+    except requests.exceptions.RequestException as e:
+        return f"The similar movies API request failed: {e}"
+    except Exception as e:
+        return f"An unexpected error occurred while getting similar movies: {e}"
