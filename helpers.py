@@ -13,6 +13,7 @@ except (FileNotFoundError, KeyError):
 
 # --- Core API & Data Functions ---
 
+@st.cache_data(ttl=60 * 60 * 12)
 def get_movie_details(movie_id):
     """
     Fetches detailed information for a single movie from the TMDb API.
@@ -51,6 +52,7 @@ def get_movie_details(movie_id):
         st.error(f"An unexpected error occurred in get_movie_details: {e}", icon="💥")
         return {}
 
+@st.cache_data(ttl=60 * 60 * 6)
 def search_movie(query: str):
     """
     Searches for a movie by its title.
@@ -60,7 +62,7 @@ def search_movie(query: str):
     """
     if not API_KEY:
         st.error("TMDb API key is not configured.", icon="🚨")
-        return "API key is missing. Cannot perform search."
+        return []
 
     url = f"https://api.themoviedb.org/3/search/movie?api_key={API_KEY}&query={query}"
     
@@ -70,7 +72,7 @@ def search_movie(query: str):
         results = response.json().get('results', [])
         
         if not results:
-            return f"I couldn't find any movies matching '{query}'. Please check the spelling or try another title."
+            return []
 
         # "Smart" Search: Sort the top 5 results by popularity and pick the best one.
         top_results = sorted(results[:5], key=lambda x: x.get('popularity', 0), reverse=True)
@@ -80,61 +82,81 @@ def search_movie(query: str):
         return [get_movie_details(best_match_id)]
 
     except requests.exceptions.RequestException as e:
-        return f"The movie search API request failed: {e}"
+        st.error(f"The movie search API request failed: {e}")
+        return []
     except Exception as e:
-        return f"An unexpected error occurred during the movie search: {e}"
+        st.error(f"An unexpected error occurred during the movie search: {e}")
+        return []
 
-def get_recommendations_by_genre(genres: list[str]):
+def get_recommendations_by_genre(genres):
     """
-    Finds popular movies based on a list of one or more genres.
-    
-    This function converts genre names to IDs, fetches popular movies matching ALL specified genres,
-    and returns a list of detailed movie information. It acts as our "recommendation" tool.
+    Public entry for tool-calling. Normalizes unhashable/proto lists, then
+    delegates to a cached inner function keyed by a hashable tuple.
+    """
+    # Normalize to a stable, hashable tuple of lowercase strings
+    try:
+        normalized = tuple(sorted([str(g).strip().lower() for g in list(genres)]))
+    except Exception:
+        # Fallback: treat as single string
+        normalized = (str(genres).strip().lower(),)
+    return _cached_get_recommendations_by_genre(normalized)
+
+
+@st.cache_data(ttl=60 * 60 * 6)
+def _cached_get_recommendations_by_genre(genres_key: tuple[str, ...]):
+    """
+    Cached implementation that expects a hashable tuple of genres.
     """
     if not API_KEY:
         st.error("TMDb API key is not configured.", icon="🚨")
-        return "API key is missing. Cannot get recommendations."
-    
-    # 1. Get the official genre list from TMDb to map names to IDs
+        return []
+
+    try:
+        genre_dict = get_genre_dict()
+
+        # Map normalized names to IDs
+        genre_ids = [genre_dict[g] for g in genres_key if g in genre_dict]
+        if not genre_ids:
+            return []
+
+        genre_id_string = ",".join(map(str, genre_ids))
+        discover_url = f"https://api.themoviedb.org/3/discover/movie?api_key={API_KEY}&with_genres={genre_id_string}&sort_by=popularity.desc"
+
+        response = requests.get(discover_url)
+        response.raise_for_status()
+        movies = response.json().get('results', [])
+        if not movies:
+            return []
+
+        top_5_movie_ids = [movie['id'] for movie in movies[:5]]
+        detailed_movies = [get_movie_details(movie_id) for movie_id in top_5_movie_ids]
+        return [movie for movie in detailed_movies if movie]
+
+    except requests.exceptions.RequestException as e:
+        st.error(f"The genre recommendation API request failed: {e}")
+        return []
+    except Exception as e:
+        st.error(f"An unexpected error occurred while getting recommendations: {e}")
+        return []
+
+@st.cache_data(ttl=60 * 60 * 24)
+def get_genre_dict():
+    """
+    Fetch and cache the TMDb genre mapping of name -> id.
+    """
+    if not API_KEY:
+        return {}
     genre_url = f"https://api.themoviedb.org/3/genre/movie/list?api_key={API_KEY}"
     try:
         response = requests.get(genre_url)
         response.raise_for_status()
         genre_list = response.json().get('genres', [])
-        genre_dict = {g['name'].lower(): g['id'] for g in genre_list}
-
-        # 2. Find IDs for the requested genres
-        genre_ids = [genre_dict[g.lower()] for g in genres if g.lower() in genre_dict]
-        
-        if not genre_ids:
-            return f"I couldn't recognize the genre(s): {', '.join(genres)}. Please try common genres like Action, Comedy, or Thriller."
-
-        # 3. Fetch movies that have ALL the specified genres
-        genre_id_string = ",".join(map(str, genre_ids))
-        discover_url = f"https://api.themoviedb.org/3/discover/movie?api_key={API_KEY}&with_genres={genre_id_string}&sort_by=popularity.desc"
-        
-        response = requests.get(discover_url)
-        response.raise_for_status()
-        movies = response.json().get('results', [])
-        
-        if not movies:
-            return f"I couldn't find any popular movies that fit all the genres: {', '.join(genres)}."
-
-        # 4. Get full details for the top 5 movies
-        top_5_movie_ids = [movie['id'] for movie in movies[:5]]
-        
-        # Using a list comprehension to gather the results
-        detailed_movies = [get_movie_details(movie_id) for movie_id in top_5_movie_ids]
-        
-        # Filter out any empty results from failed detail fetches
-        return [movie for movie in detailed_movies if movie]
-
-    except requests.exceptions.RequestException as e:
-        return f"The genre recommendation API request failed: {e}"
-    except Exception as e:
-        return f"An unexpected error occurred while getting recommendations: {e}"
+        return {g['name'].lower(): g['id'] for g in genre_list}
+    except Exception:
+        return {}
 
 
+@st.cache_data(ttl=60 * 60 * 6)
 def get_similar_movies(title: str):
     """
     Finds up to 5 movies similar to the given movie title.
@@ -145,7 +167,7 @@ def get_similar_movies(title: str):
     """
     if not API_KEY:
         st.error("TMDb API key is not configured.", icon="🚨")
-        return "API key is missing. Cannot get similar movies."
+        return []
 
     # 1) Search for the best match to obtain a movie ID
     search_url = f"https://api.themoviedb.org/3/search/movie?api_key={API_KEY}&query={title}"
@@ -155,7 +177,7 @@ def get_similar_movies(title: str):
         search_results = search_resp.json().get('results', [])
 
         if not search_results:
-            return f"I couldn't find any movie matching '{title}'. Please check the spelling or try another title."
+            return []
 
         # Pick best match by popularity among top 5
         top_results = sorted(search_results[:5], key=lambda x: x.get('popularity', 0), reverse=True)
@@ -168,7 +190,7 @@ def get_similar_movies(title: str):
         similar_results = similar_resp.json().get('results', [])
 
         if not similar_results:
-            return f"I couldn't find similar movies for '{title}'."
+            return []
 
         # 3) Enrich top 5 with detailed info
         top_5_ids = [movie['id'] for movie in similar_results[:5]]
@@ -176,6 +198,8 @@ def get_similar_movies(title: str):
         return [m for m in detailed if m]
 
     except requests.exceptions.RequestException as e:
-        return f"The similar movies API request failed: {e}"
+        st.error(f"The similar movies API request failed: {e}")
+        return []
     except Exception as e:
-        return f"An unexpected error occurred while getting similar movies: {e}"
+        st.error(f"An unexpected error occurred while getting similar movies: {e}")
+        return []
