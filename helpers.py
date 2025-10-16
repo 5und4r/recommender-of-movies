@@ -13,7 +13,7 @@ except (FileNotFoundError, KeyError):
 
 # --- Core API & Data Functions ---
 
-@st.cache_data(ttl=60 * 60 * 12)
+@st.cache_data(ttl=60 * 60 * 12, show_spinner=False)
 def get_movie_details(movie_id):
     """
     Fetches detailed information for a single movie from the TMDb API.
@@ -52,7 +52,7 @@ def get_movie_details(movie_id):
         st.error(f"An unexpected error occurred in get_movie_details: {e}", icon="💥")
         return {}
 
-@st.cache_data(ttl=60 * 60 * 6)
+@st.cache_data(ttl=60 * 60 * 6, show_spinner=False)
 def search_movie(query: str):
     """
     Searches for a movie by its title.
@@ -102,7 +102,7 @@ def get_recommendations_by_genre(genres):
     return _cached_get_recommendations_by_genre(normalized)
 
 
-@st.cache_data(ttl=60 * 60 * 6)
+@st.cache_data(ttl=60 * 60 * 6, show_spinner=False)
 def _cached_get_recommendations_by_genre(genres_key: tuple[str, ...]):
     """
     Cached implementation that expects a hashable tuple of genres.
@@ -139,7 +139,7 @@ def _cached_get_recommendations_by_genre(genres_key: tuple[str, ...]):
         st.error(f"An unexpected error occurred while getting recommendations: {e}")
         return []
 
-@st.cache_data(ttl=60 * 60 * 24)
+@st.cache_data(ttl=60 * 60 * 24, show_spinner=False)
 def get_genre_dict():
     """
     Fetch and cache the TMDb genre mapping of name -> id.
@@ -156,7 +156,7 @@ def get_genre_dict():
         return {}
 
 
-@st.cache_data(ttl=60 * 60 * 6)
+@st.cache_data(ttl=60 * 60 * 6, show_spinner=False)
 def get_similar_movies(title: str):
     """
     Finds up to 5 movies similar to the given movie title.
@@ -202,4 +202,59 @@ def get_similar_movies(title: str):
         return []
     except Exception as e:
         st.error(f"An unexpected error occurred while getting similar movies: {e}")
+        return []
+
+
+@st.cache_data(ttl=60 * 60 * 6, show_spinner=False)
+def get_trending_movies(window: str = 'day'):
+    """
+    Returns up to 5 trending movies for the given window ('day' or 'week').
+    """
+    if not API_KEY:
+        st.error("TMDb API key is not configured.", icon="🚨")
+        return []
+
+    window = 'week' if str(window).lower() == 'week' else 'day'
+    url = f"https://api.themoviedb.org/3/trending/movie/{window}?api_key={API_KEY}"
+    try:
+        resp = requests.get(url)
+        resp.raise_for_status()
+        items = resp.json().get('results', [])
+        if not items:
+            return []
+        top_ids = [m['id'] for m in items[:5]]
+        detailed = [get_movie_details(mid) for mid in top_ids]
+        return [m for m in detailed if m]
+    except requests.exceptions.RequestException as e:
+        st.error(f"Trending API request failed: {e}")
+        return []
+    except Exception as e:
+        st.error(f"Unexpected error while fetching trending movies: {e}")
+        return []
+
+
+@st.cache_data(ttl=60 * 60 * 6, show_spinner=False)
+def get_top_rated_movies():
+    """
+    Returns up to 5 top-rated movies (global TMDb list).
+    """
+    if not API_KEY:
+        st.error("TMDb API key is not configured.", icon="🚨")
+        return []
+
+    url = f"https://api.themoviedb.org/3/movie/top_rated?api_key={API_KEY}"
+    try:
+        resp = requests.get(url)
+        resp.raise_for_status()
+        items = resp.json().get('results', [])
+        if not items:
+            return []
+        top_ids = [m['id'] for m in items[:5]]
+        detailed = [get_movie_details(mid) for mid in top_ids]
+        return [m for m in detailed if m]
+    except requests.exceptions.RequestException as e:
+        st.error(f"Top rated API request failed: {e}")
+        return []
+    except Exception as e:
+        st.error(f"Unexpected error while fetching top rated movies: {e}")
         return []
