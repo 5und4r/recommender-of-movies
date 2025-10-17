@@ -15,6 +15,11 @@ except Exception as e:
 tools = [
     helpers.search_movie,
     helpers.get_recommendations_by_genre,
+    helpers.get_similar_movies,
+    helpers.get_trending_movies,
+    helpers.get_top_rated_movies,
+    helpers.get_movies_by_actor,
+    helpers.get_movies_by_director,
 ]
 
 # --- 3. Model and Chat Initialization ---
@@ -34,6 +39,11 @@ chat = model.start_chat()
 # --- 4. App Setup and State Initialization ---
 st.set_page_config(page_title="Movie Recommender", page_icon="🎬", layout="wide")
 st.title("🎬 Gemini Movie Recommender")
+
+with st.sidebar:
+    if st.button("Clear cached data"):
+        st.cache_data.clear()
+        st.success("Cache cleared.")
 
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = [
@@ -103,7 +113,21 @@ if prompt := st.chat_input("Ask me for a movie, genre, or something similar...")
                     response_text = ""
                     if tool_response:
                         if isinstance(tool_response, list):
-                            response_text = "Of course! Here are some recommendations I found for you:"
+                            # Customize message slightly based on which tool responded
+                            if function_call.name == 'get_recommendations_by_genre':
+                                response_text = "Of course! Here are some recommendations by genre:"
+                            elif function_call.name == 'get_similar_movies':
+                                response_text = "Got it! Here are movies similar to your request:"
+                            elif function_call.name == 'get_trending_movies':
+                                response_text = "Here are the trending movies right now:"
+                            elif function_call.name == 'get_top_rated_movies':
+                                response_text = "Here are top rated movies:" 
+                            elif function_call.name == 'get_movies_by_actor':
+                                response_text = "Here are movies featuring that actor:" 
+                            elif function_call.name == 'get_movies_by_director':
+                                response_text = "Here are movies directed by that person:"
+                            else:
+                                response_text = "Of course! Here are some recommendations I found for you:"
                         else:
                             response_text = f"You got it. Here is the result for '{tool_response.get('title')}':"
                     else:
