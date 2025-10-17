@@ -18,6 +18,8 @@ tools = [
     helpers.get_similar_movies,
     helpers.get_trending_movies,
     helpers.get_top_rated_movies,
+    helpers.get_movies_by_actor,
+    helpers.get_movies_by_director,
 ]
 
 # --- 3. Model and Chat Initialization ---
@@ -35,8 +37,8 @@ model = genai.GenerativeModel( # type: ignore
 chat = model.start_chat()
 
 # --- 4. App Setup and State Initialization ---
-st.set_page_config(page_title="Movie Recommender", page_icon="🎬", layout="wide")
-st.title("🎬 Gemini Movie Recommender")
+st.set_page_config(page_title="Movie Recommender", page_icon="🎬", layout="centered")
+st.title("🎬 Movie Recommender")
 
 with st.sidebar:
     if st.button("Clear cached data"):
@@ -120,6 +122,10 @@ if prompt := st.chat_input("Ask me for a movie, genre, or something similar...")
                                 response_text = "Here are the trending movies right now:"
                             elif function_call.name == 'get_top_rated_movies':
                                 response_text = "Here are top rated movies:" 
+                            elif function_call.name == 'get_movies_by_actor':
+                                response_text = "Here are movies featuring that actor:" 
+                            elif function_call.name == 'get_movies_by_director':
+                                response_text = "Here are movies directed by that person:"
                             else:
                                 response_text = "Of course! Here are some recommendations I found for you:"
                         else:

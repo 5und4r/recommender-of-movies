@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import pandas as pd
+import urllib.parse
 
 # --- TMDb API Configuration ---
 
@@ -257,4 +258,134 @@ def get_top_rated_movies():
         return []
     except Exception as e:
         st.error(f"Unexpected error while fetching top rated movies: {e}")
+        return []
+
+
+# --- People-based search helpers ---
+
+@st.cache_data(ttl=60 * 60 * 24, show_spinner=False)
+def _resolve_person_id(name: str):
+    """
+    Resolve a person (actor/actress/director) name to a TMDb person_id.
+    Picks the most popular match. Returns None if not found or API error.
+    """
+    if not API_KEY:
+        return None
+    name = str(name).strip()
+    if not name:
+        return None
+    encoded = urllib.parse.quote_plus(name)
+    url = f"https://api.themoviedb.org/3/search/person?api_key={API_KEY}&query={encoded}"
+    try:
+        resp = requests.get(url)
+        resp.raise_for_status()
+        results = resp.json().get('results', [])
+        if not results:
+            return None
+        # Pick most popular match
+        best = sorted(results[:5], key=lambda x: x.get('popularity', 0), reverse=True)[0]
+        return best.get('id')
+    except Exception:
+        return None
+
+
+def _safe_top_rated_sort_key(movie: dict):
+    """Sort key for top-rated that guards against low-vote-count noise."""
+    vote_count = movie.get('vote_count', 0) or 0
+    vote_average = movie.get('vote_average', 0.0) or 0.0
+    # Penalize items with very low vote counts by clamping below threshold
+    threshold = 500
+    return (vote_count >= threshold, vote_average)
+
+
+@st.cache_data(ttl=60 * 60 * 6, show_spinner=False)
+def get_movies_by_actor(name: str, sort: str = 'popularity'):
+    """
+    Return up to 5 movies featuring the actor/actress `name`.
+    sort: 'popularity' | 'top_rated' | 'trending' (trending approximated by popularity)
+    Always returns a list (possibly empty) of detailed movie dicts.
+    """
+    if not API_KEY:
+        st.error("TMDb API key is not configured.", icon="🚨")
+        return []
+
+    person_id = _resolve_person_id(name)
+    if not person_id:
+        return []
+
+    url = f"https://api.themoviedb.org/3/person/{person_id}/movie_credits?api_key={API_KEY}"
+    try:
+        resp = requests.get(url)
+        resp.raise_for_status()
+        credits = resp.json()
+        cast_list = credits.get('cast', []) or []
+        if not cast_list:
+            return []
+
+        # De-duplicate by movie id
+        unique = {m['id']: m for m in cast_list if m.get('id')}
+        movies = list(unique.values())
+
+        mode = str(sort).lower()
+        if mode == 'top_rated':
+            movies.sort(key=_safe_top_rated_sort_key, reverse=True)
+        else:
+            # popularity or trending (approx)
+            movies.sort(key=lambda m: m.get('popularity', 0) or 0, reverse=True)
+
+        top_ids = [m['id'] for m in movies[:5]]
+        detailed = [get_movie_details(mid) for mid in top_ids]
+        return [m for m in detailed if m]
+    except requests.exceptions.RequestException as e:
+        st.error(f"Person credits API request failed: {e}")
+        return []
+    except Exception as e:
+        st.error(f"Unexpected error while fetching movies by actor: {e}")
+        return []
+
+
+@st.cache_data(ttl=60 * 60 * 6, show_spinner=False)
+def get_movies_by_director(name: str, sort: str = 'popularity'):
+    """
+    Return up to 5 movies directed by `name`.
+    sort: 'popularity' | 'top_rated' | 'trending' (trending approximated by popularity)
+    Always returns a list (possibly empty) of detailed movie dicts.
+    """
+    if not API_KEY:
+        st.error("TMDb API key is not configured.", icon="🚨")
+        return []
+
+    person_id = _resolve_person_id(name)
+    if not person_id:
+        return []
+
+    url = f"https://api.themoviedb.org/3/person/{person_id}/movie_credits?api_key={API_KEY}"
+    try:
+        resp = requests.get(url)
+        resp.raise_for_status()
+        credits = resp.json()
+        crew_list = credits.get('crew', []) or []
+        # Filter by job == Director
+        directed = [m for m in crew_list if (m.get('job') or '').lower() == 'director']
+        if not directed:
+            return []
+
+        # De-duplicate by movie id
+        unique = {m['id']: m for m in directed if m.get('id')}
+        movies = list(unique.values())
+
+        mode = str(sort).lower()
+        if mode == 'top_rated':
+            movies.sort(key=_safe_top_rated_sort_key, reverse=True)
+        else:
+            movies.sort(key=lambda m: m.get('popularity', 0) or 0, reverse=True)
+
+        top_ids = [m['id'] for m in movies[:5]]
+        detailed = [get_movie_details(mid) for mid in top_ids]
+        return [m for m in detailed if m]
+    except requests.exceptions.RequestException as e:
+        st.error(f"Person credits API request failed: {e}")
+        return []
+    except Exception as e:
+        st.error(f"Unexpected error while fetching movies by director: {e}")
         return []
