@@ -37,8 +37,13 @@ model = genai.GenerativeModel( # type: ignore
 chat = model.start_chat()
 
 # --- 4. App Setup and State Initialization ---
-st.set_page_config(page_title="Movie Recommender", page_icon="🎬", layout="wide")
-st.title("🎬 Gemini Movie Recommender")
+st.set_page_config(page_title="Movie Recommender", page_icon="🎬", layout="centered")
+st.title("🎬 Movie Recommender")
+
+with st.sidebar:
+    if st.button("Clear cached data"):
+        st.cache_data.clear()
+        st.success("Cache cleared.")
 
 with st.sidebar:
     if st.button("Clear cached data"):
