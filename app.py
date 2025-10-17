@@ -41,7 +41,7 @@ st.set_page_config(page_title="Movie Recommender", page_icon="🎬", layout="cen
 st.title("🎬 Movie Recommender")
 
 with st.sidebar:
-    if st.button("Clear cached data"):
+    if st.button("Clear cached data", key="clear_cache_btn"):
         st.cache_data.clear()
         st.success("Cache cleared.")
 
