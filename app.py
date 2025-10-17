@@ -45,6 +45,11 @@ with st.sidebar:
         st.cache_data.clear()
         st.success("Cache cleared.")
 
+with st.sidebar:
+    if st.button("Clear cached data"):
+        st.cache_data.clear()
+        st.success("Cache cleared.")
+
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = [
         {"role": "assistant", "content": "Hello! I'm your movie-buff assistant. Ask me to find a movie by title or recommend something by genre!"}
