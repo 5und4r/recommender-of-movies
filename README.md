@@ -89,6 +89,9 @@ The core of this application is its modern AI architecture. Instead of relying o
 
 This architecture makes the application incredibly flexible and easy to extend. To add a new feature, we simply have to write a new tool function and add it to the AI's tool belt.
 
+## 🎬Want to test the app? Here's the link!:
+https://recommender-of-movies-uqgvkygpqrbw9x2kf75npn.streamlit.app/
+
 Hope you like it, feel free to comment!
 
 Stay tuned for more imporvements!
