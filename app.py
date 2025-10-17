@@ -153,3 +153,5 @@ if prompt := st.chat_input("Ask me for a movie, genre, or something similar...")
 
     st.rerun()
 
+
+
