@@ -31,7 +31,7 @@ safety_settings = {
 }
 
 model = genai.GenerativeModel( # type: ignore
-    model_name="models/gemini-2.5-flash-preview-05-20",
+    model_name="models/gemini-2.5-flash",
     safety_settings=safety_settings
 )
 chat = model.start_chat()
